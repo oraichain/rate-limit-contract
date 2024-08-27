@@ -1,0 +1,25 @@
+.idea
+.vscode
+vendor
+*.iml
+/coverage
+/bin
+node_modules
+
+
+# Build results
+target
+artifacts
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+\#*\#
+.\#*
+
+/schema
+.scannerwork/
+clippy-report.json
+.DS_Store
+.env

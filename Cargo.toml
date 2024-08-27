@@ -1,0 +1,39 @@
+[workspace]
+resolver = '2'
+
+members = ["contracts/*"]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Oraichain Labs"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/oraichain/rate-limit-contract.git"
+homepage = "https://orai.io"
+documentation = "https://github.com/oraichain/rate-limit-contract.git"
+exclude = [
+    # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+    "contract.wasm",
+    "hash.txt",
+]
+
+[profile.release]
+opt-level = 3
+debug = false
+debug-assertions = false
+codegen-units = 1
+incremental = false
+rpath = false
+lto = true
+overflow-checks = true
+panic = 'abort'
+
+[workspace.dependencies]
+cosmwasm-schema = "1.5"
+cosmwasm-std = { version = "1.5" }
+cw-ownable = "0.5.1"
+cw-storage-plus = "1.0"
+cw-utils = "1.0"
+cw2 = "1.0"
+cw20 = "1.0"
+thiserror = "1.0.56"
