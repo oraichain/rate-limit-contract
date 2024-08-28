@@ -3,7 +3,7 @@
 use crate::packet::Packet;
 use crate::{contract::*, test_msg_recv, test_msg_send, ContractError};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{from_binary, from_json, Addr, Attribute, Uint128};
+use cosmwasm_std::{from_json, Addr, Attribute, Uint128};
 
 use crate::helpers::tests::verify_query_response;
 use crate::msg::{ExecuteMsg, InstantiateMsg, PathMsg, QueryMsg, QuotaMsg};
