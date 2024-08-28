@@ -206,26 +206,20 @@ fn add_rate_limit_attributes(response: Response, result: &RateLimit) -> Response
 // This function manually injects an inflow. This is used when reverting a
 // packet that failed ack or timed-out.
 pub fn undo_send(deps: DepsMut, contract: Addr, packet: Packet) -> Result<Response, ContractError> {
-    // Sudo call. Only go modules should be allowed to access this
-    let (channel_id, denom) = (packet.channel, packet.denom);
-
-    let path = &Path::new(&contract, channel_id, &denom);
-    let any_path = Path::new(&contract, "any", &denom);
+    let path = &Path::new(&contract, packet.channel, packet.denom);
     let funds = packet.amount;
 
-    let mut any_trackers = RATE_LIMIT_TRACKERS
-        .may_load(deps.storage, any_path.clone().into())?
-        .unwrap_or_default();
     let mut trackers = RATE_LIMIT_TRACKERS
         .may_load(deps.storage, path.into())?
         .unwrap_or_default();
 
-    let not_configured = trackers.is_empty() && any_trackers.is_empty();
+    let not_configured = trackers.is_empty();
 
     if not_configured {
         // No Quota configured for the current path. Allowing all messages.
         return Ok(Response::new()
             .add_attribute("method", "try_transfer")
+            .add_attribute("contract", contract.as_str())
             .add_attribute("channel_id", path.channel.to_string())
             .add_attribute("denom", path.denom.to_string())
             .add_attribute("quota", "none"));
@@ -239,22 +233,14 @@ pub fn undo_send(deps: DepsMut, contract: Addr, packet: Packet) -> Result<Respon
             limit.to_owned()
         })
         .collect();
-    let any_results: Vec<RateLimit> = any_trackers
-        .iter_mut()
-        .map(|limit| {
-            limit.flow.undo_flow(FlowType::Out, funds);
-            limit.to_owned()
-        })
-        .collect();
 
     RATE_LIMIT_TRACKERS.save(deps.storage, path.into(), &results)?;
-    RATE_LIMIT_TRACKERS.save(deps.storage, any_path.into(), &any_results)?;
 
     Ok(Response::new()
         .add_attribute("method", "undo_send")
+        .add_attribute("contract", contract.as_str())
         .add_attribute("channel_id", path.channel.to_string())
-        .add_attribute("denom", path.denom.to_string())
-        .add_attribute("any_channel", (!any_trackers.is_empty()).to_string()))
+        .add_attribute("denom", path.denom.to_string()))
 }
 
 // #[cfg(test)]
