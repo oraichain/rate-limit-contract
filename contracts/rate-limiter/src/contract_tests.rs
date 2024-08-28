@@ -1,76 +1,72 @@
-// #![cfg(test)]
+#![cfg(test)]
 
-// use crate::packet::Packet;
-// use crate::{contract::*, test_msg_recv, test_msg_send, ContractError};
-// use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-// use cosmwasm_std::{from_binary, Addr, Attribute, Uint128};
+use crate::packet::Packet;
+use crate::{contract::*, test_msg_recv, test_msg_send, ContractError};
+use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+use cosmwasm_std::{from_binary, Addr, Attribute, Uint128};
 
-// use crate::helpers::tests::verify_query_response;
-// use crate::msg::{InstantiateMsg, PathMsg, QueryMsg, QuotaMsg, SudoMsg};
-// use crate::state::tests::RESET_TIME_WEEKLY;
-// use crate::state::{RateLimit, GOVMODULE, IBCMODULE, RATE_LIMIT_TRACKERS};
+use crate::helpers::tests::verify_query_response;
+use crate::msg::{InstantiateMsg, PathMsg, QueryMsg, QuotaMsg};
+use crate::state::tests::RESET_TIME_WEEKLY;
+use crate::state::{RateLimit, RATE_LIMIT_TRACKERS};
 
-// const IBC_ADDR: &str = "IBC_MODULE";
-// const GOV_ADDR: &str = "GOV_MODULE";
+const BRIDGE_CONTRACT: &str = "BRIDGE_CONTRACT";
+const OWNER: &str = "Owner";
 
-// #[test] // Tests we ccan instantiate the contract and that the owners are set correctly
-// fn proper_instantiation() {
-//     let mut deps = mock_dependencies();
+#[test] // Tests we ccan instantiate the contract and that the owners are set correctly
+fn proper_instantiation() {
+    let mut deps = mock_dependencies();
 
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![],
-//     };
-//     let info = mock_info(IBC_ADDR, &vec![]);
+    let msg = InstantiateMsg { paths: vec![] };
+    let info = mock_info(OWNER, &vec![]);
 
-//     // we can just call .unwrap() to assert this was a success
-//     let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-//     assert_eq!(0, res.messages.len());
+    // we can just call .unwrap() to assert this was a success
+    let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    assert_eq!(0, res.messages.len());
+}
 
-//     // The ibc and gov modules are properly stored
-//     assert_eq!(IBCMODULE.load(deps.as_ref().storage).unwrap(), IBC_ADDR);
-//     assert_eq!(GOVMODULE.load(deps.as_ref().storage).unwrap(), GOV_ADDR);
-// }
+#[test] // Tests that when a packet is transferred, the peropper allowance is consummed
+fn consume_allowance() {
+    let mut deps = mock_dependencies();
 
-// #[test] // Tests that when a packet is transferred, the peropper allowance is consummed
-// fn consume_allowance() {
-//     let mut deps = mock_dependencies();
+    let quota = QuotaMsg::new(
+        "weekly",
+        RESET_TIME_WEEKLY,
+        Uint128::new(1000000),
+        Uint128::new(1000000),
+    );
+    let msg = InstantiateMsg {
+        paths: vec![PathMsg {
+            contract_addr: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![quota],
+        }],
+    };
+    let info = mock_info(OWNER, &vec![]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-//     let quota = QuotaMsg::new("weekly", RESET_TIME_WEEKLY, 10, 10);
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![quota],
-//         }],
-//     };
-//     let info = mock_info(GOV_ADDR, &vec![]);
-//     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let info = mock_info(BRIDGE_CONTRACT, &vec![]);
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom") ,
+        funds: Uint128::new(10000)
+    );
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom") ,
-//         channel_value: 3_300_u32.into(),
-//         funds: 300_u32.into()
-//     );
-//     let res = sudo(deps.as_mut(), mock_env(), msg).unwrap();
+    println!("{:?}", res);
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "10000");
 
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "300");
-
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_300_u32.into(),
-//         funds: 300_u32.into()
-//     );
-//     let err = sudo(deps.as_mut(), mock_env(), msg).unwrap_err();
-//     assert!(matches!(err, ContractError::RateLimitExceded { .. }));
-// }
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: Uint128::new(1000000)
+    );
+    let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+    assert!(matches!(err, ContractError::RateLimitExceded { .. }));
+}
 
 // #[test] // Tests that the balance of send and receive is maintained (i.e: recives are sustracted from the send allowance and sends from the receives)
 // fn symetric_flows_dont_consume_allowance() {
