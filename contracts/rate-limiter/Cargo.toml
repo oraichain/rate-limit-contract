@@ -1,14 +1,54 @@
 [package]
 name = "rate-limiter"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-homepage.workspace = true
-documentation.workspace = true
-exclude.workspace = true
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+documentation = { workspace = true }
+
+[features]
+backtraces = ["cosmwasm-std/backtraces"]
+library = []
+test-tube = []
+default = ["cosmwasm_1_1"]
+cosmwasm_1_1 = [
+    "cosmwasm-std/cosmwasm_1_1",
+    "cosmwasm-testing-util/cosmwasm_1_1",
+]
+cosmwasm_1_2 = [
+    "cosmwasm_1_1",
+    "cosmwasm-std/cosmwasm_1_2",
+    "cosmwasm-testing-util/cosmwasm_1_2",
+]
+cosmwasm_1_3 = [
+    "cosmwasm_1_2",
+    "cosmwasm-std/cosmwasm_1_3",
+    "cosmwasm-testing-util/cosmwasm_1_3",
+]
+cosmwasm_1_4 = [
+    "cosmwasm_1_3",
+    "cosmwasm-std/cosmwasm_1_4",
+    "cosmwasm-testing-util/cosmwasm_1_4",
+]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+doctest = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cosmwasm-schema = { workspace = true }
+cosmwasm-std = { workspace = true }
+cw-ownable = { workspace = true }
+cw-storage-plus = { workspace = true }
+cw-utils = { workspace = true }
+cw2 = { workspace = true }
+cw20 = { workspace = true }
+thiserror = { workspace = true }
+sha2 = "0.10.8"
+
+[dev-dependencies]
+cosmwasm-testing-util = { workspace = true }

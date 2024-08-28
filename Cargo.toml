@@ -37,3 +37,4 @@ cw-utils = "1.0"
 cw2 = "1.0"
 cw20 = "1.0"
 thiserror = "1.0.56"
+cosmwasm-testing-util = { git = "https://github.com/oraichain/cosmwasm-testing-util.git", rev = "efc0356" }

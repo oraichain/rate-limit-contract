@@ -1,14 +1,20 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+#![allow(clippy::result_large_err)]
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// Contract
+pub mod contract;
+mod error;
+pub mod msg;
+mod state;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod packet;
+
+// Functions
+mod execute;
+mod query;
+
+// Tests
+mod contract_tests;
+mod helpers;
+mod integration_tests;
+
+pub use crate::error::ContractError;
