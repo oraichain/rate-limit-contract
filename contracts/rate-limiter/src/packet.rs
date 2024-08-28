@@ -37,11 +37,7 @@ macro_rules! test_msg_send {
 macro_rules! test_msg_recv {
     (channel_id: $channel_id:expr, denom: $denom:expr, funds: $funds:expr) => {
         $crate::msg::ExecuteMsg::RecvPacket {
-            packet: $crate::packet::Packet::mock(
-                $channel_id,
-                format!("transfer/{}/{}", $channel_id, $denom),
-                $funds,
-            ),
+            packet: $crate::packet::Packet::mock($channel_id, $denom, $funds),
         }
     };
 }

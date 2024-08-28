@@ -68,67 +68,73 @@ fn consume_allowance() {
     assert!(matches!(err, ContractError::RateLimitExceded { .. }));
 }
 
-// #[test] // Tests that the balance of send and receive is maintained (i.e: recives are sustracted from the send allowance and sends from the receives)
-// fn symetric_flows_dont_consume_allowance() {
-//     let mut deps = mock_dependencies();
+#[test] // Tests that the balance of send and receive is maintained (i.e: recives are sustracted from the send allowance and sends from the receives)
+fn symetric_flows_dont_consume_allowance() {
+    let mut deps = mock_dependencies();
 
-//     let quota = QuotaMsg::new("weekly", RESET_TIME_WEEKLY, 10, 10);
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![quota],
-//         }],
-//     };
-//     let info = mock_info(GOV_ADDR, &vec![]);
-//     let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    let quota = QuotaMsg::new(
+        "weekly",
+        RESET_TIME_WEEKLY,
+        Uint128::new(1000000),
+        Uint128::new(1000000),
+    );
+    let msg = InstantiateMsg {
+        paths: vec![PathMsg {
+            contract_addr: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![quota],
+        }],
+    };
+    let info = mock_info(OWNER, &vec![]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-//     let send_msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_300_u32.into(),
-//         funds: 300_u32.into()
-//     );
-//     let recv_msg = test_msg_recv!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_000_u32.into(),
-//         funds: 300_u32.into()
-//     );
+    let send_msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 300000_u32.into()
+    );
+    let recv_msg = test_msg_recv!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 300000_u32.into()
+    );
 
-//     let res = sudo(deps.as_mut(), mock_env(), send_msg.clone()).unwrap();
-//     let Attribute { key, value } = &res.attributes[3];
-//     assert_eq!(key, "weekly_used_in");
-//     assert_eq!(value, "0");
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "300");
+    let info = mock_info(BRIDGE_CONTRACT, &vec![]);
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), send_msg.clone()).unwrap();
+    let Attribute { key, value } = &res.attributes[3];
+    assert_eq!(key, "weekly_used_in");
+    assert_eq!(value, "0");
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "300000");
 
-//     let res = sudo(deps.as_mut(), mock_env(), recv_msg.clone()).unwrap();
-//     let Attribute { key, value } = &res.attributes[3];
-//     assert_eq!(key, "weekly_used_in");
-//     assert_eq!(value, "0");
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "0");
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
+    let Attribute { key, value } = &res.attributes[3];
+    assert_eq!(key, "weekly_used_in");
+    assert_eq!(value, "0");
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "0");
 
-//     // We can still use the path. Even if we have sent more than the
-//     // allowance through the path (900 > 3000*.1), the current "balance"
-//     // of inflow vs outflow is still lower than the path's capacity/quota
-//     let res = sudo(deps.as_mut(), mock_env(), recv_msg.clone()).unwrap();
-//     let Attribute { key, value } = &res.attributes[3];
-//     assert_eq!(key, "weekly_used_in");
-//     assert_eq!(value, "300");
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "0");
+    // We can still use the path. Even if we have sent more than the
+    // allowance through the path (900 > 3000*.1), the current "balance"
+    // of inflow vs outflow is still lower than the path's capacity/quota
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
+    let Attribute { key, value } = &res.attributes[3];
+    assert_eq!(key, "weekly_used_in");
+    assert_eq!(value, "300000");
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "0");
 
-//     let err = sudo(deps.as_mut(), mock_env(), recv_msg.clone()).unwrap_err();
+    execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
+    execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
 
-//     assert!(matches!(err, ContractError::RateLimitExceded { .. }));
-// }
+    let err = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap_err();
+
+    assert!(matches!(err, ContractError::RateLimitExceded { .. }));
+}
 
 // #[test] // Tests that we can have different quotas for send and receive. In this test we use 4% send and 1% receive
 // fn asymetric_quotas() {
