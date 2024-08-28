@@ -3,10 +3,10 @@
 use crate::packet::Packet;
 use crate::{contract::*, test_msg_recv, test_msg_send, ContractError};
 use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-use cosmwasm_std::{from_binary, Addr, Attribute, Uint128};
+use cosmwasm_std::{from_binary, from_json, Addr, Attribute, Uint128};
 
 use crate::helpers::tests::verify_query_response;
-use crate::msg::{InstantiateMsg, PathMsg, QueryMsg, QuotaMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, PathMsg, QueryMsg, QuotaMsg};
 use crate::state::tests::RESET_TIME_WEEKLY;
 use crate::state::{RateLimit, RATE_LIMIT_TRACKERS};
 
@@ -129,6 +129,7 @@ fn symetric_flows_dont_consume_allowance() {
     assert_eq!(value, "0");
 
     execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
+    execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
 
     let err = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap_err();
 
@@ -218,183 +219,138 @@ fn asymetric_quotas() {
     assert_eq!(value, "400000");
 }
 
-// #[test] // Tests we can get the current state of the trackers
-// fn query_state() {
-//     let mut deps = mock_dependencies();
+#[test] // Tests we can get the current state of the trackers
+fn query_state() {
+    let mut deps = mock_dependencies();
 
-//     let quota = QuotaMsg::new("weekly", RESET_TIME_WEEKLY, 10, 10);
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![quota],
-//         }],
-//     };
-//     let info = mock_info(GOV_ADDR, &vec![]);
-//     let env = mock_env();
-//     let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+    let quota = QuotaMsg::new(
+        "weekly",
+        RESET_TIME_WEEKLY,
+        Uint128::new(1000000),
+        Uint128::new(1000000),
+    );
+    let msg = InstantiateMsg {
+        paths: vec![PathMsg {
+            contract_addr: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![quota],
+        }],
+    };
+    let info = mock_info(OWNER, &vec![]);
+    let env = mock_env();
+    let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-//     let query_msg = QueryMsg::GetQuotas {
-//         channel_id: format!("any"),
-//         denom: format!("denom"),
-//     };
+    let query_msg = QueryMsg::GetQuotas {
+        contract: Addr::unchecked(BRIDGE_CONTRACT),
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+    };
 
-//     let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
-//     let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//     assert_eq!(value[0].quota.name, "weekly");
-//     assert_eq!(value[0].quota.max_percentage_send, 10);
-//     assert_eq!(value[0].quota.max_percentage_recv, 10);
-//     assert_eq!(value[0].quota.duration, RESET_TIME_WEEKLY);
-//     assert_eq!(value[0].flow.inflow, Uint128::from(0_u32));
-//     assert_eq!(value[0].flow.outflow, Uint128::from(0_u32));
-//     assert_eq!(
-//         value[0].flow.period_end,
-//         env.block.time.plus_seconds(RESET_TIME_WEEKLY)
-//     );
+    let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
+    let value: Vec<RateLimit> = from_json(&res).unwrap();
+    assert_eq!(value[0].quota.name, "weekly");
+    assert_eq!(value[0].quota.max_recv, Uint128::new(1000000));
+    assert_eq!(value[0].quota.max_send, Uint128::new(1000000));
+    assert_eq!(value[0].quota.duration, RESET_TIME_WEEKLY);
+    assert_eq!(value[0].flow.inflow, Uint128::from(0_u32));
+    assert_eq!(value[0].flow.outflow, Uint128::from(0_u32));
+    assert_eq!(
+        value[0].flow.period_end,
+        env.block.time.plus_seconds(RESET_TIME_WEEKLY)
+    );
 
-//     let send_msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_300_u32.into(),
-//         funds: 300_u32.into()
-//     );
-//     sudo(deps.as_mut(), mock_env(), send_msg.clone()).unwrap();
+    let info = mock_info(BRIDGE_CONTRACT, &[]);
+    let send_msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 300_u32.into()
+    );
+    execute(deps.as_mut(), mock_env(), info.clone(), send_msg.clone()).unwrap();
 
-//     let recv_msg = test_msg_recv!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_000_u32.into(),
-//         funds: 30_u32.into()
-//     );
-//     sudo(deps.as_mut(), mock_env(), recv_msg.clone()).unwrap();
+    let recv_msg = test_msg_recv!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 30_u32.into()
+    );
+    execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
 
-//     // Query
-//     let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
-//     let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//     verify_query_response(
-//         &value[0],
-//         "weekly",
-//         (10, 10),
-//         RESET_TIME_WEEKLY,
-//         30_u32.into(),
-//         300_u32.into(),
-//         env.block.time.plus_seconds(RESET_TIME_WEEKLY),
-//     );
-// }
+    // Query
+    let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
+    let value: Vec<RateLimit> = from_json(&res).unwrap();
+    verify_query_response(
+        &value[0],
+        "weekly",
+        Uint128::new(1000000),
+        Uint128::new(1000000),
+        RESET_TIME_WEEKLY,
+        30_u32.into(),
+        300_u32.into(),
+        env.block.time.plus_seconds(RESET_TIME_WEEKLY),
+    );
+}
 
-// #[test] // Tests quota percentages are between [0,100]
-// fn bad_quotas() {
-//     let mut deps = mock_dependencies();
+#[test] // Tests that undo reverts a packet send without affecting expiration or channel value
+fn undo_send() {
+    let mut deps = mock_dependencies();
 
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![QuotaMsg {
-//                 name: "bad_quota".to_string(),
-//                 duration: 200,
-//                 send_recv: (5000, 101),
-//             }],
-//         }],
-//     };
-//     let info = mock_info(IBC_ADDR, &vec![]);
+    let quota = QuotaMsg::new(
+        "weekly",
+        RESET_TIME_WEEKLY,
+        Uint128::new(1000000),
+        Uint128::new(1000000),
+    );
+    let msg = InstantiateMsg {
+        paths: vec![PathMsg {
+            contract_addr: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![quota],
+        }],
+    };
+    let info = mock_info(OWNER, &vec![]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-//     let env = mock_env();
-//     instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+    let send_msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 300_u32.into()
+    );
+    let undo_msg = ExecuteMsg::UndoSend {
+        packet: Packet::mock(format!("channel"), format!("denom"), 300_u32.into()),
+    };
+    let info = mock_info(BRIDGE_CONTRACT, &[]);
 
-//     // If a quota is higher than 100%, we set it to 100%
-//     let query_msg = QueryMsg::GetQuotas {
-//         channel_id: format!("any"),
-//         denom: format!("denom"),
-//     };
-//     let res = query(deps.as_ref(), env.clone(), query_msg).unwrap();
-//     let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//     verify_query_response(
-//         &value[0],
-//         "bad_quota",
-//         (100, 100),
-//         200,
-//         0_u32.into(),
-//         0_u32.into(),
-//         env.block.time.plus_seconds(200),
-//     );
-// }
+    execute(deps.as_mut(), mock_env(), info.clone(), send_msg.clone()).unwrap();
 
-// #[test] // Tests that undo reverts a packet send without affecting expiration or channel value
-// fn undo_send() {
-//     let mut deps = mock_dependencies();
+    let trackers = RATE_LIMIT_TRACKERS
+        .load(
+            &deps.storage,
+            (
+                Addr::unchecked(BRIDGE_CONTRACT),
+                "channel".to_string(),
+                "denom".to_string(),
+            ),
+        )
+        .unwrap();
+    assert_eq!(
+        trackers.first().unwrap().flow.outflow,
+        Uint128::from(300_u32)
+    );
+    let period_end = trackers.first().unwrap().flow.period_end;
 
-//     let quota = QuotaMsg::new("weekly", RESET_TIME_WEEKLY, 10, 10);
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![quota],
-//         }],
-//     };
-//     let info = mock_info(GOV_ADDR, &vec![]);
-//     let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    execute(deps.as_mut(), mock_env(), info.clone(), undo_msg.clone()).unwrap();
 
-//     let send_msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_300_u32.into(),
-//         funds: 300_u32.into()
-//     );
-//     let undo_msg = SudoMsg::UndoSend {
-//         packet: Packet::mock(
-//             format!("channel"),
-//             format!("channel"),
-//             format!("denom"),
-//             300_u32.into(),
-//         ),
-//     };
-
-//     sudo(deps.as_mut(), mock_env(), send_msg.clone()).unwrap();
-
-//     let trackers = RATE_LIMIT_TRACKERS
-//         .load(&deps.storage, ("any".to_string(), "denom".to_string()))
-//         .unwrap();
-//     assert_eq!(
-//         trackers.first().unwrap().flow.outflow,
-//         Uint128::from(300_u32)
-//     );
-//     let period_end = trackers.first().unwrap().flow.period_end;
-//     let channel_value = trackers.first().unwrap().quota.channel_value;
-
-//     sudo(deps.as_mut(), mock_env(), undo_msg.clone()).unwrap();
-
-//     let trackers = RATE_LIMIT_TRACKERS
-//         .load(&deps.storage, ("any".to_string(), "denom".to_string()))
-//         .unwrap();
-//     assert_eq!(trackers.first().unwrap().flow.outflow, Uint128::from(0_u32));
-//     assert_eq!(trackers.first().unwrap().flow.period_end, period_end);
-//     assert_eq!(trackers.first().unwrap().quota.channel_value, channel_value);
-// }
-
-// #[test]
-// fn test_basic_message() {
-//     let json = r#"{"send_packet":{"packet":{"sequence":2,"source_port":"transfer","source_channel":"channel-0","destination_port":"transfer","destination_channel":"channel-0","data":{"denom":"stake","amount":"125000000000011250","sender":"osmo1dwtagd6xzl4eutwtyv6mewra627lkg3n3w26h6","receiver":"osmo1yvjkt8lnpxucjmspaj5ss4aa8562gx0a3rks8s"},"timeout_height":{"revision_height":100}}}}"#;
-//     let _parsed: SudoMsg = serde_json_wasm::from_str(json).unwrap();
-//     //println!("{parsed:?}");
-// }
-
-// #[test]
-// fn test_testnet_message() {
-//     let json = r#"{"send_packet":{"packet":{"sequence":4,"source_port":"transfer","source_channel":"channel-0","destination_port":"transfer","destination_channel":"channel-1491","data":{"denom":"uosmo","amount":"100","sender":"osmo1cyyzpxplxdzkeea7kwsydadg87357qnahakaks","receiver":"osmo1c584m4lq25h83yp6ag8hh4htjr92d954vklzja"},"timeout_height":{},"timeout_timestamp":1668024637477293371}}}"#;
-//     let _parsed: SudoMsg = serde_json_wasm::from_str(json).unwrap();
-//     //println!("{parsed:?}");
-// }
-
-// #[test]
-// fn test_tokenfactory_message() {
-//     let json = r#"{"send_packet":{"packet":{"sequence":4,"source_port":"transfer","source_channel":"channel-0","destination_port":"transfer","destination_channel":"channel-1491","data":{"denom":"transfer/channel-0/factory/osmo12smx2wdlyttvyzvzg54y2vnqwq2qjateuf7thj/czar","amount":"100000000000000000","sender":"osmo1cyyzpxplxdzkeea7kwsydadg87357qnahakaks","receiver":"osmo1c584m4lq25h83yp6ag8hh4htjr92d954vklzja"},"timeout_height":{},"timeout_timestamp":1668024476848430980}}}"#;
-//     let _parsed: SudoMsg = serde_json_wasm::from_str(json).unwrap();
-//     //println!("{parsed:?}");
-// }
+    let trackers = RATE_LIMIT_TRACKERS
+        .load(
+            &deps.storage,
+            (
+                Addr::unchecked(BRIDGE_CONTRACT),
+                "channel".to_string(),
+                "denom".to_string(),
+            ),
+        )
+        .unwrap();
+    assert_eq!(trackers.first().unwrap().flow.outflow, Uint128::from(0_u32));
+    assert_eq!(trackers.first().unwrap().flow.period_end, period_end);
+}
