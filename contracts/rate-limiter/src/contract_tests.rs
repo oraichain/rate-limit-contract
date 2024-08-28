@@ -129,95 +129,94 @@ fn symetric_flows_dont_consume_allowance() {
     assert_eq!(value, "0");
 
     execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
-    execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap();
 
     let err = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg.clone()).unwrap_err();
 
     assert!(matches!(err, ContractError::RateLimitExceded { .. }));
 }
 
-// #[test] // Tests that we can have different quotas for send and receive. In this test we use 4% send and 1% receive
-// fn asymetric_quotas() {
-//     let mut deps = mock_dependencies();
+#[test] // Tests that we can have different quotas for send and receive.
+fn asymetric_quotas() {
+    let mut deps = mock_dependencies();
 
-//     let quota = QuotaMsg::new("weekly", RESET_TIME_WEEKLY, 4, 1);
-//     let msg = InstantiateMsg {
-//         gov_module: Addr::unchecked(GOV_ADDR),
-//         ibc_module: Addr::unchecked(IBC_ADDR),
-//         paths: vec![PathMsg {
-//             channel_id: format!("any"),
-//             denom: format!("denom"),
-//             quotas: vec![quota],
-//         }],
-//     };
-//     let info = mock_info(GOV_ADDR, &vec![]);
-//     let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    let quota = QuotaMsg::new(
+        "weekly",
+        RESET_TIME_WEEKLY,
+        Uint128::new(400000),
+        Uint128::new(100000),
+    );
+    let msg = InstantiateMsg {
+        paths: vec![PathMsg {
+            contract_addr: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![quota],
+        }],
+    };
+    let info = mock_info(OWNER, &vec![]);
+    let _res = instantiate(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
 
-//     // Sending 2%
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_060_u32.into(),
-//         funds: 60_u32.into()
-//     );
-//     let res = sudo(deps.as_mut(), mock_env(), msg).unwrap();
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "60");
+    // Sending 50%
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 200000_u32.into()
+    );
+    let info = mock_info(BRIDGE_CONTRACT, &[]);
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "200000");
 
-//     // Sending 2% more. Allowed, as sending has a 4% allowance
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_060_u32.into(),
-//         funds: 60_u32.into()
-//     );
+    // Sending 50% more. Allowed, as sending has a 100% allowance
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 200000_u32.into()
+    );
 
-//     let res = sudo(deps.as_mut(), mock_env(), msg).unwrap();
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "120");
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), msg).unwrap();
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "400000");
 
-//     // Receiving 1% should still work. 4% *sent* through the path, but we can still receive.
-//     let recv_msg = test_msg_recv!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_000_u32.into(),
-//         funds: 30_u32.into()
-//     );
-//     let res = sudo(deps.as_mut(), mock_env(), recv_msg).unwrap();
-//     let Attribute { key, value } = &res.attributes[3];
-//     assert_eq!(key, "weekly_used_in");
-//     assert_eq!(value, "0");
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "90");
+    // Receiving 1% should still work. 4% *sent* through the path, but we can still receive.
+    let recv_msg = test_msg_recv!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 100000_u32.into()
+    );
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), recv_msg).unwrap();
+    let Attribute { key, value } = &res.attributes[3];
+    assert_eq!(key, "weekly_used_in");
+    assert_eq!(value, "0");
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "300000");
 
-//     // Sending 2%. Should fail. In balance, we've sent 4% and received 1%, so only 1% left to send.
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_060_u32.into(),
-//         funds: 60_u32.into()
-//     );
-//     let err = sudo(deps.as_mut(), mock_env(), msg.clone()).unwrap_err();
-//     assert!(matches!(err, ContractError::RateLimitExceded { .. }));
+    // Sending 2%. Should fail. In balance, we've sent 4% and received 1%, so only 1% left to send.
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 200000_u32.into()
+    );
+    let err = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap_err();
+    assert!(matches!(err, ContractError::RateLimitExceded { .. }));
 
-//     // Sending 1%: Allowed; because sending has a 4% allowance. We've sent 4% already, but received 1%, so there's send cappacity again
-//     let msg = test_msg_send!(
-//         channel_id: format!("channel"),
-//         denom: format!("denom"),
-//         channel_value: 3_060_u32.into(),
-//         funds: 30_u32.into()
-//     );
-//     let res = sudo(deps.as_mut(), mock_env(), msg.clone()).unwrap();
-//     let Attribute { key, value } = &res.attributes[3];
-//     assert_eq!(key, "weekly_used_in");
-//     assert_eq!(value, "0");
-//     let Attribute { key, value } = &res.attributes[4];
-//     assert_eq!(key, "weekly_used_out");
-//     assert_eq!(value, "120");
-// }
+    // Sending 1%: Allowed; because sending has a 4% allowance. We've sent 4% already, but received 1%, so there's send cappacity again
+    let msg = test_msg_send!(
+        channel_id: format!("channel"),
+        denom: format!("denom"),
+        funds: 100000_u32.into()
+    );
+    let res = execute(deps.as_mut(), mock_env(), info.clone(), msg.clone()).unwrap();
+    let Attribute { key, value } = &res.attributes[3];
+    assert_eq!(key, "weekly_used_in");
+    assert_eq!(value, "0");
+    let Attribute { key, value } = &res.attributes[4];
+    assert_eq!(key, "weekly_used_out");
+    assert_eq!(value, "400000");
+}
 
 // #[test] // Tests we can get the current state of the trackers
 // fn query_state() {
