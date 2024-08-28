@@ -243,142 +243,144 @@ pub fn undo_send(deps: DepsMut, contract: Addr, packet: Packet) -> Result<Respon
         .add_attribute("denom", path.denom.to_string()))
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-//     use cosmwasm_std::{from_binary, Addr, StdError};
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::{from_json, Addr, StdError, Uint128};
 
-//     use crate::contract::{execute, query};
-//     use crate::helpers::tests::verify_query_response;
-//     use crate::msg::{ExecuteMsg, QueryMsg, QuotaMsg};
-//     use crate::state::{RateLimit, GOVMODULE, IBCMODULE};
+    use crate::contract::{execute, query};
+    use crate::helpers::tests::verify_query_response;
+    use crate::msg::{ExecuteMsg, QueryMsg, QuotaMsg};
+    use crate::state::RateLimit;
 
-//     const IBC_ADDR: &str = "IBC_MODULE";
-//     const GOV_ADDR: &str = "GOV_MODULE";
+    const BRIDGE_CONTRACT: &str = "bridge_contract";
 
-//     #[test] // Tests AddPath and RemovePath messages
-//     fn management_add_and_remove_path() {
-//         let mut deps = mock_dependencies();
-//         IBCMODULE
-//             .save(deps.as_mut().storage, &Addr::unchecked(IBC_ADDR))
-//             .unwrap();
-//         GOVMODULE
-//             .save(deps.as_mut().storage, &Addr::unchecked(GOV_ADDR))
-//             .unwrap();
+    #[test] // Tests AddPath and RemovePath messages
+    fn management_add_and_remove_path() {
+        let mut deps = mock_dependencies();
 
-//         let msg = ExecuteMsg::AddPath {
-//             channel_id: format!("channel"),
-//             denom: format!("denom"),
-//             quotas: vec![QuotaMsg {
-//                 name: "daily".to_string(),
-//                 duration: 1600,
-//                 send_recv: (3, 5),
-//             }],
-//         };
-//         let info = mock_info(IBC_ADDR, &vec![]);
+        let msg = ExecuteMsg::AddPath {
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+            quotas: vec![QuotaMsg {
+                name: "daily".to_string(),
+                duration: 1600,
+                max_send: Uint128::new(1000000),
+                max_receive: Uint128::new(1000000),
+            }],
+        };
+        let info = mock_info(BRIDGE_CONTRACT, &vec![]);
 
-//         let env = mock_env();
-//         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-//         assert_eq!(0, res.messages.len());
+        let env = mock_env();
+        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        assert_eq!(0, res.messages.len());
 
-//         let query_msg = QueryMsg::GetQuotas {
-//             channel_id: format!("channel"),
-//             denom: format!("denom"),
-//         };
+        let query_msg = QueryMsg::GetQuotas {
+            contract: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+        };
 
-//         let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
+        let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
 
-//         let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//         verify_query_response(
-//             &value[0],
-//             "daily",
-//             (3, 5),
-//             1600,
-//             0_u32.into(),
-//             0_u32.into(),
-//             env.block.time.plus_seconds(1600),
-//         );
+        let value: Vec<RateLimit> = from_json(&res).unwrap();
+        verify_query_response(
+            &value[0],
+            "daily",
+            Uint128::new(1000000),
+            Uint128::new(1000000),
+            1600,
+            0_u32.into(),
+            0_u32.into(),
+            env.block.time.plus_seconds(1600),
+        );
 
-//         assert_eq!(value.len(), 1);
+        assert_eq!(value.len(), 1);
 
-//         // Add another path
-//         let msg = ExecuteMsg::AddPath {
-//             channel_id: format!("channel2"),
-//             denom: format!("denom"),
-//             quotas: vec![QuotaMsg {
-//                 name: "daily".to_string(),
-//                 duration: 1600,
-//                 send_recv: (3, 5),
-//             }],
-//         };
-//         let info = mock_info(IBC_ADDR, &vec![]);
+        // Add another path
+        let msg = ExecuteMsg::AddPath {
+            channel_id: format!("channel2"),
+            denom: format!("denom"),
+            quotas: vec![QuotaMsg {
+                name: "daily".to_string(),
+                duration: 1600,
+                max_send: Uint128::new(1000000),
+                max_receive: Uint128::new(1000000),
+            }],
+        };
+        let info = mock_info(BRIDGE_CONTRACT, &vec![]);
 
-//         let env = mock_env();
-//         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let env = mock_env();
+        execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-//         // remove the first one
-//         let msg = ExecuteMsg::RemovePath {
-//             channel_id: format!("channel"),
-//             denom: format!("denom"),
-//         };
+        // remove the first one
+        let msg = ExecuteMsg::RemovePath {
+            channel_id: format!("channel"),
+            denom: format!("denom"),
+        };
 
-//         let info = mock_info(IBC_ADDR, &vec![]);
-//         let env = mock_env();
-//         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let info = mock_info(BRIDGE_CONTRACT, &vec![]);
+        let env = mock_env();
+        execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-//         // The channel is not there anymore
-//         let err = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap_err();
-//         assert!(matches!(err, StdError::NotFound { .. }));
+        // The channel is not there anymore
+        let err = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap_err();
+        assert!(matches!(err, StdError::NotFound { .. }));
 
-//         // The second channel is still there
-//         let query_msg = QueryMsg::GetQuotas {
-//             channel_id: format!("channel2"),
-//             denom: format!("denom"),
-//         };
-//         let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
-//         let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//         assert_eq!(value.len(), 1);
-//         verify_query_response(
-//             &value[0],
-//             "daily",
-//             (3, 5),
-//             1600,
-//             0_u32.into(),
-//             0_u32.into(),
-//             env.block.time.plus_seconds(1600),
-//         );
+        // The second channel is still there
+        let query_msg = QueryMsg::GetQuotas {
+            contract: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel2"),
+            denom: format!("denom"),
+        };
+        let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
+        let value: Vec<RateLimit> = from_json(&res).unwrap();
+        assert_eq!(value.len(), 1);
+        verify_query_response(
+            &value[0],
+            "daily",
+            Uint128::new(1000000),
+            Uint128::new(1000000),
+            1600,
+            0_u32.into(),
+            0_u32.into(),
+            env.block.time.plus_seconds(1600),
+        );
 
-//         // Paths are overriden if they share a name and denom
-//         let msg = ExecuteMsg::AddPath {
-//             channel_id: format!("channel2"),
-//             denom: format!("denom"),
-//             quotas: vec![QuotaMsg {
-//                 name: "different".to_string(),
-//                 duration: 5000,
-//                 send_recv: (50, 30),
-//             }],
-//         };
-//         let info = mock_info(IBC_ADDR, &vec![]);
+        // Paths are overriden if they share a name and denom
+        let msg = ExecuteMsg::AddPath {
+            channel_id: format!("channel2"),
+            denom: format!("denom"),
+            quotas: vec![QuotaMsg {
+                name: "different".to_string(),
+                duration: 5000,
+                max_send: Uint128::new(10000000),
+                max_receive: Uint128::new(10000000),
+            }],
+        };
+        let info = mock_info(BRIDGE_CONTRACT, &vec![]);
 
-//         let env = mock_env();
-//         execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let env = mock_env();
+        execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-//         let query_msg = QueryMsg::GetQuotas {
-//             channel_id: format!("channel2"),
-//             denom: format!("denom"),
-//         };
-//         let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
-//         let value: Vec<RateLimit> = from_binary(&res).unwrap();
-//         assert_eq!(value.len(), 1);
+        let query_msg = QueryMsg::GetQuotas {
+            contract: Addr::unchecked(BRIDGE_CONTRACT),
+            channel_id: format!("channel2"),
+            denom: format!("denom"),
+        };
+        let res = query(deps.as_ref(), mock_env(), query_msg.clone()).unwrap();
+        let value: Vec<RateLimit> = from_json(&res).unwrap();
+        assert_eq!(value.len(), 1);
 
-//         verify_query_response(
-//             &value[0],
-//             "different",
-//             (50, 30),
-//             5000,
-//             0_u32.into(),
-//             0_u32.into(),
-//             env.block.time.plus_seconds(5000),
-//         );
-//     }
-// }
+        verify_query_response(
+            &value[0],
+            "different",
+            Uint128::new(10000000),
+            Uint128::new(10000000),
+            5000,
+            0_u32.into(),
+            0_u32.into(),
+            env.block.time.plus_seconds(5000),
+        );
+    }
+}
